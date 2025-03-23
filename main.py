@@ -48,8 +48,8 @@ class EyeTrackingSimulator:
                 }
             },
             'snacks': {
-                'path': 'Categories/Snacks Labelled Images.v1i.coco/train',
-                'dimensions': (1024, 1024),
+                'path': 'Categories/Snacks Labelled Images.v2i.coco/train',
+                'dimensions': (900, 900),
                 'folder_name': 'Snacks',  # Add folder name mapping
                 'priorities': {
                     'Logo': 5,

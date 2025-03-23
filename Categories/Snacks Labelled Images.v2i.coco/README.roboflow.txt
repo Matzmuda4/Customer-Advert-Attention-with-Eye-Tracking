@@ -1,8 +1,8 @@
 
-Snacks Labelled Dataset - v1 2025-03-22 10:26pm
+Snacks Labelled Dataset - v2 2025-03-23 12:36pm
 ==============================
 
-This dataset was exported via roboflow.com on March 22, 2025 at 9:26 PM GMT
+This dataset was exported via roboflow.com on March 23, 2025 at 11:39 AM GMT
 
 Roboflow is an end-to-end computer vision platform that helps you
 * collaborate with your team on computer vision projects
@@ -22,7 +22,7 @@ Snack are annotated in COCO format.
 
 The following pre-processing was applied to each image:
 * Auto-orientation of pixel data (with EXIF-orientation stripping)
-* Resize to 1024x1024 (Stretch)
+* Resize to 900x900 (Stretch)
 
 No image augmentation techniques were applied.
 
