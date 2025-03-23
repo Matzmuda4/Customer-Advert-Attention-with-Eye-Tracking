@@ -11,15 +11,22 @@ function startTracking(category) {
     button.disabled = true;
     button.textContent = 'Starting...';
     
-    fetch(`http://localhost:8080/start_tracking/${category}`)
-        .then(response => response.json())
+    fetch(`/start_tracking/${category}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
-            window.location.href = `http://localhost:8080/simulator/${category}`;
+            console.log('Redirecting to simulator page...');
+            window.location.href = `/simulator/${category}`;
         })
         .catch(error => {
             console.error('Error:', error);
             button.disabled = false;
-            button.textContent = 'Error - Try Again';
+            button.textContent = category.charAt(0).toUpperCase() + category.slice(1);
+            alert(`Failed to start tracking for ${category}. Please try again.`);
         });
 }
 

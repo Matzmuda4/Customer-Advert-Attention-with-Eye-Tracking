@@ -18,6 +18,7 @@
             background-color: white;
             border-radius: 10px;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            max-width: 600px;
         }
         button {
             margin: 10px;
@@ -36,16 +37,103 @@
             background-color: #cccccc;
             cursor: not-allowed;
         }
+        #categorySelect {
+            display: none;
+        }
+        #calibrationButton {
+            background-color: #2196F3;
+            font-size: 18px;
+            padding: 15px 30px;
+        }
+        #calibrationButton:hover {
+            background-color: #0b7dda;
+        }
+        .status-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+            background-color: #ccc;
+        }
+        .status-dot.active {
+            background-color: #4CAF50;
+        }
+        .step {
+            margin-bottom: 15px;
+            text-align: left;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .current {
+            background-color: #e8f5e9;
+            border-left: 4px solid #4CAF50;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Eye Tracking Simulator</h1>
-        <p>Choose a category to start tracking:</p>
-        <button onclick="startTracking('beverages')">Beverages</button>
-        <button onclick="startTracking('cars')">Cars</button>
-        <button onclick="startTracking('snacks')">Snacks</button>
+        
+        <div id="stepsContainer">
+            <div class="step current" id="step1">
+                <p><span class="status-dot" id="dot1"></span><strong>Step 1:</strong> Calibrate your eye tracking</p>
+                <p>First, we need to calibrate the eye tracker to ensure accurate tracking during the experiment.</p>
+                <button id="calibrationButton">Start Calibration</button>
+            </div>
+            
+            <div class="step" id="step2">
+                <p><span class="status-dot" id="dot2"></span><strong>Step 2:</strong> Choose a category to start tracking</p>
+                <div id="categorySelect">
+                    <button onclick="startTracking('beverages')">Beverages</button>
+                    <button onclick="startTracking('cars')">Cars</button>
+                    <button onclick="startTracking('snacks')">Snacks</button>
+                </div>
+            </div>
+        </div>
     </div>
-    <script src="tracking.js"></script>
+    <script>
+        document.getElementById('calibrationButton').addEventListener('click', function() {
+            window.location.href = '/calibration.html?action=initialize';
+        });
+        
+        // Check if returning from successful calibration
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('calibrated') === 'true') {
+            // Update UI to show calibration is complete
+            document.getElementById('dot1').classList.add('active');
+            document.getElementById('step1').classList.remove('current');
+            document.getElementById('calibrationButton').textContent = 'Recalibrate (Optional)';
+            
+            // Show category selection
+            document.getElementById('step2').classList.add('current');
+            document.getElementById('categorySelect').style.display = 'block';
+        }
+        
+        function startTracking(category) {
+            const button = event.target;
+            button.disabled = true;
+            button.textContent = 'Starting...';
+            
+            fetch(`/start_tracking/${category}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Starting image viewing...');
+                    document.getElementById('dot2').classList.add('active');
+                    window.location.href = `/simulator/${category}`;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    button.disabled = false;
+                    button.textContent = category.charAt(0).toUpperCase() + category.slice(1);
+                    alert(`Failed to start tracking for ${category}. Please try again.`);
+                });
+        }
+    </script>
 </body>
 </html> 

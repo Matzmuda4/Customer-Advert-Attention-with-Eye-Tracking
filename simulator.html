@@ -48,6 +48,17 @@
             padding: 5px;
             z-index: 1;
         }
+        #gazePoint {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: red;
+            border-radius: 50%;
+            opacity: 0.7;
+            transform: translate(-50%, -50%);
+            z-index: 100;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -55,12 +66,17 @@
         <img id="currentImage">
         <div id="statusText"></div>
         <div id="timer">Time remaining: 10s</div>
+        <div id="gazePoint"></div>
     </div>
     <script>
-        const category = window.location.pathname.split('/').pop();
+        const urlParams = new URLSearchParams(window.location.search);
+        const pathParts = window.location.pathname.split('/');
+        const category = pathParts[pathParts.length - 1];
+        
         let timeLeft = 10;
         let timerInterval;
         let lastTime = Date.now() / 1000;
+        let pollingInterval;
 
         function updateTimer() {
             document.getElementById('timer').textContent = `Time remaining: ${timeLeft}s`;
@@ -79,6 +95,11 @@
         }
 
         function requestNextImage() {
+            // Stop eye tracking polling when changing images
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+            
             fetch(`/next_image/${category}`)
                 .then(response => response.json())
                 .then(data => {
@@ -90,48 +111,93 @@
                             img.dataset.actualWidth = data.dimensions.width;
                             img.dataset.actualHeight = data.dimensions.height;
                             startImageTimer();
+                            startEyeTracking();
                         };
                         img.src = data.image;
                     }
                 });
         }
 
-        document.getElementById('currentImage').addEventListener('mousemove', function(event) {
-            const rect = this.getBoundingClientRect();
-            const actualWidth = parseFloat(this.dataset.actualWidth) || this.naturalWidth;
-            const actualHeight = parseFloat(this.dataset.actualHeight) || this.naturalHeight;
+        function startEyeTracking() {
+            // Clear any existing interval
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
             
-            const scaleX = actualWidth / rect.width;
-            const scaleY = actualHeight / rect.height;
-            
-            const x = (event.clientX - rect.left) * scaleX;
-            const y = (event.clientY - rect.top) * scaleY;
-            
-            const currentTime = Date.now() / 1000;
-            const timeDiff = currentTime - lastTime;
-            lastTime = currentTime;
-            
-            fetch(`/track/${category}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    x: x,
-                    y: y,
-                    timestamp: currentTime,
-                    duration: timeDiff
+            // Start polling eye tracking data
+            pollingInterval = setInterval(getEyeTrackingData, 50); // 20 FPS
+        }
+
+        function getEyeTrackingData() {
+            fetch('/calibration_status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'tracking' && data.point) {
+                        const [eyeX, eyeY] = data.point;
+                        updateGazePosition(eyeX, eyeY);
+                    }
                 })
-            })
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('statusText').textContent = 
-                    `Current element: ${data.element}\n` +
-                    `Position: (${Math.round(x)}, ${Math.round(y)})\n` +
-                    `Time on element: ${data.time.toFixed(2)}s\n` +
-                    `View order: ${data.order}`;
-            });
-        });
+                .catch(error => {
+                    console.error('Eye tracking error:', error);
+                });
+        }
+
+        function updateGazePosition(eyeX, eyeY) {
+            // Update the gaze point position
+            const gazePoint = document.getElementById('gazePoint');
+            gazePoint.style.left = `${eyeX}px`;
+            gazePoint.style.top = `${eyeY}px`;
+            
+            // Get the image element and its bounding rectangle
+            const img = document.getElementById('currentImage');
+            const rect = img.getBoundingClientRect();
+            
+            // Calculate if the gaze is within the image
+            if (eyeX >= rect.left && eyeX <= rect.right && 
+                eyeY >= rect.top && eyeY <= rect.bottom) {
+                
+                // Convert screen coordinates to image coordinates
+                const imgX = eyeX - rect.left;
+                const imgY = eyeY - rect.top;
+                
+                // Get the actual image dimensions for scaling
+                const actualWidth = parseFloat(img.dataset.actualWidth) || img.naturalWidth;
+                const actualHeight = parseFloat(img.dataset.actualHeight) || img.naturalHeight;
+                
+                // Scale coordinates based on actual image dimensions vs displayed size
+                const scaleX = actualWidth / img.width;
+                const scaleY = actualHeight / img.height;
+                
+                const scaledX = imgX * scaleX;
+                const scaledY = imgY * scaleY;
+                
+                // Get current time for duration calculation
+                const currentTime = Date.now() / 1000;
+                const timeDiff = currentTime - lastTime;
+                lastTime = currentTime;
+                
+                // Send tracking data to the server
+                fetch(`/track/${category}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        x: scaledX,
+                        y: scaledY,
+                        duration: timeDiff
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('statusText').textContent = 
+                        `Current element: ${data.element}\n` +
+                        `Position: (${Math.round(scaledX)}, ${Math.round(scaledY)})\n` +
+                        `Time on element: ${data.time.toFixed(2)}s\n` +
+                        `View order: ${data.order}`;
+                });
+            }
+        }
 
         // Start tracking when page loads
         window.onload = requestNextImage;

@@ -14,6 +14,12 @@ import io
 import base64
 import webbrowser
 
+# Check if PIL has Resampling (newer versions) or uses LANCZOS constant directly (older versions)
+try:
+    LANCZOS = Image.Resampling.LANCZOS
+except AttributeError:
+    LANCZOS = Image.LANCZOS
+
 class EyeTrackingSimulator:
     def __init__(self, category='beverages', run_number=1):
         self.category = category
@@ -214,7 +220,7 @@ class EyeTrackingSimulator:
                     new_height = display_height
                     new_width = int(display_height * img_ratio)
                 
-                image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                image = image.resize((new_width, new_height), LANCZOS)
                 photo = ImageTk.PhotoImage(image)
                 
                 # Center the image on canvas
@@ -369,7 +375,7 @@ class EyeTrackingSimulator:
                 self.current_image_width = new_width
                 self.current_image_height = new_height
                 
-                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                img = img.resize((new_width, new_height), LANCZOS)
                 
                 buffer = io.BytesIO()
                 img.save(buffer, format='PNG')
@@ -418,10 +424,12 @@ class RequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({'status': 'success'}).encode())
             
         elif self.path.startswith('/simulator/'):
+            category = self.path.split('/')[-1]
             with open('simulator.html', 'r') as f:
                 content = f.read()
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
+            self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(content.encode())
             
@@ -434,6 +442,7 @@ class RequestHandler(SimpleHTTPRequestHandler):
                     image_data = simulator.get_next_image()
                     self.send_response(200)
                     self.send_header('Content-type', 'application/json')
+                    self.send_header('Access-Control-Allow-Origin', '*')
                     self.end_headers()
                     self.wfile.write(json.dumps(image_data).encode())
                 except Exception as e:
@@ -445,6 +454,12 @@ class RequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(404, "Simulator not found")
                 
         else:
+            # Add CORS headers to all other responses
+            original_end_headers = self.end_headers
+            def custom_end_headers():
+                self.send_header('Access-Control-Allow-Origin', '*')
+                original_end_headers()
+            self.end_headers = custom_end_headers
             return super().do_GET()
 
     def do_POST(self):
@@ -457,6 +472,10 @@ class RequestHandler(SimpleHTTPRequestHandler):
                 post_data = self.rfile.read(content_length)
                 data = json.loads(post_data.decode('utf-8'))
                 
+                # Add default duration if not present
+                if 'duration' not in data:
+                    data['duration'] = 0.1
+                
                 response = simulator.track_movement(
                     data['x'], 
                     data['y'], 
@@ -465,8 +484,14 @@ class RequestHandler(SimpleHTTPRequestHandler):
                 
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')  # Add CORS header
                 self.end_headers()
                 self.wfile.write(json.dumps(response).encode())
+            else:
+                self.send_response(404)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Simulator not found'}).encode())
         else:
             self.send_response(404)
             self.end_headers()

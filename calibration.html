@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eye Tracking Calibration</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #000;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        #container {
+            width: 80%;
+            max-width: 800px;
+            text-align: center;
+        }
+        
+        h1 {
+            color: #fff;
+            margin-bottom: 20px;
+        }
+        
+        p {
+            color: #ccc;
+            margin-bottom: 30px;
+        }
+        
+        #controls {
+            margin-bottom: 30px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            margin: 0 10px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        
+        #statusMessage {
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 20px;
+        }
+        
+        #calibrationTarget {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 2px solid blue;
+            border-radius: 50%;
+            display: none;
+            transform: translate(-50%, -50%);
+        }
+        
+        #calibrationTarget::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 10px;
+            height: 10px;
+            background-color: red;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        #gazePoint {
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            background-color: #ff3333;
+            border-radius: 50%;
+            display: none;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>Eye Tracking Calibration</h1>
+        <p>Look at the calibration points as they appear on screen.</p>
+        <div id="controls">
+            <button id="startButton">Start Calibration</button>
+            <button id="resetButton">Reset</button>
+            <button id="continueButton">Continue</button>
+        </div>
+        <div id="statusMessage">Click Start Calibration to begin</div>
+    </div>
+    
+    <div id="calibrationTarget"></div>
+    <div id="gazePoint"></div>
+    
+    <script>
+        let calibrationComplete = false;
+        let statusInterval = null;
+        
+        // Function to move the calibration target
+        function moveCalibrationTarget(x, y) {
+            const target = document.getElementById('calibrationTarget');
+            target.style.left = `${x}px`;
+            target.style.top = `${y}px`;
+        }
+        
+        // Function to update the gaze position indicator
+        function updateGazePosition(x, y) {
+            const gazePoint = document.getElementById('gazePoint');
+            gazePoint.style.left = `${x}px`;
+            gazePoint.style.top = `${y}px`;
+        }
+        
+        // Function to update based on calibration status
+        function updateCalibrationStatus() {
+            if (calibrationComplete) {
+                return; // If calibration is done, stop polling
+            }
+            
+            // Get status from server
+            fetch('/calibration_status')
+                .then(response => response.json())
+                .then(data => {
+                    // Update the status message
+                    document.getElementById('statusMessage').textContent = data.message;
+                    
+                    // Check if calibration has completed
+                    if (data.calibration_complete) {
+                        if (!calibrationComplete) {
+                            calibrationComplete = true;
+                            document.getElementById('statusMessage').textContent = "Calibration complete!";
+                            document.getElementById('continueButton').disabled = false;
+                            document.getElementById('calibrationTarget').style.display = 'none';
+                            document.getElementById('gazePoint').style.display = 'block';
+                            
+                            // Continue polling for gaze position for a demo
+                            setInterval(() => {
+                                fetch('/calibration_status')
+                                    .then(response => response.json())
+                                    .then(data => {
+                                        if (data.gaze) {
+                                            updateGazePosition(data.gaze[0], data.gaze[1]);
+                                        }
+                                    })
+                                    .catch(error => console.error('Error getting gaze:', error));
+                            }, 50);
+                        }
+                    } 
+                    // Update the calibration target position if we have a current point
+                    else if (data.current_point && data.calibration_started) {
+                        const x = data.current_point[0] * window.innerWidth;
+                        const y = data.current_point[1] * window.innerHeight;
+                        moveCalibrationTarget(x, y);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking calibration status:', error);
+                });
+        }
+        
+        // Function to start calibration
+        function startCalibration() {
+            // Reset UI state
+            calibrationComplete = false;
+            document.getElementById('startButton').disabled = true;
+            document.getElementById('resetButton').disabled = false;
+            document.getElementById('statusMessage').textContent = "Starting calibration...";
+            document.getElementById('calibrationTarget').style.display = 'block';
+            document.getElementById('gazePoint').style.display = 'none';
+            
+            // Send request to start calibration
+            fetch('/calibration_status?start=true')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.calibration_started) {
+                        document.getElementById('statusMessage').textContent = "Calibration started. Please follow the red dot with your eyes.";
+                        // Start polling for calibration status
+                        statusInterval = setInterval(updateCalibrationStatus, 100);
+                    } else {
+                        document.getElementById('statusMessage').textContent = "Failed to start calibration: " + (data.message || "Unknown error");
+                        document.getElementById('startButton').disabled = false;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error starting calibration:', error);
+                    document.getElementById('statusMessage').textContent = "Error starting calibration";
+                    document.getElementById('startButton').disabled = false;
+                });
+        }
+        
+        // Function to reset calibration
+        function resetCalibration() {
+            fetch('/calibration_status?reset=true')
+                .then(response => response.json())
+                .then(data => {
+                    calibrationComplete = false;
+                    clearInterval(statusInterval);
+                    document.getElementById('startButton').disabled = false;
+                    document.getElementById('resetButton').disabled = true;
+                    document.getElementById('continueButton').disabled = true;
+                    document.getElementById('statusMessage').textContent = "Calibration reset. Click Start to begin.";
+                    document.getElementById('calibrationTarget').style.display = 'none';
+                    document.getElementById('gazePoint').style.display = 'none';
+                })
+                .catch(error => {
+                    console.error('Error resetting calibration:', error);
+                });
+        }
+        
+        // Initialize the page
+        window.onload = function() {
+            document.getElementById('startButton').addEventListener('click', startCalibration);
+            document.getElementById('resetButton').addEventListener('click', resetCalibration);
+            document.getElementById('continueButton').addEventListener('click', function() {
+                // Get the category from the URL parameter
+                const urlParams = new URLSearchParams(window.location.search);
+                const category = urlParams.get('category');
+                
+                // Redirect to the simulator page with the category
+                window.location.href = `/simulator.html?category=${category}`;
+            });
+            
+            document.getElementById('resetButton').disabled = true;
+            document.getElementById('continueButton').disabled = true;
+        };
+    </script>
+</body>
+</html> 
