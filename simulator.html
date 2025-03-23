@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Eye Tracking Simulator</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f0f0;
+        }
+        #imageContainer {
+            position: relative;
+            width: 1024px;
+            height: 1024px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f0f0f0;
+        }
+        #currentImage {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+        #statusText {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: red;
+            font-family: Arial;
+            font-size: 12px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 5px;
+            z-index: 1;
+        }
+        #timer {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: black;
+            font-family: Arial;
+            font-size: 16px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 5px;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <div id="imageContainer">
+        <img id="currentImage">
+        <div id="statusText"></div>
+        <div id="timer">Time remaining: 10s</div>
+    </div>
+    <script>
+        const category = window.location.pathname.split('/').pop();
+        let timeLeft = 10;
+        let timerInterval;
+        let lastTime = Date.now() / 1000;
+
+        function updateTimer() {
+            document.getElementById('timer').textContent = `Time remaining: ${timeLeft}s`;
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                requestNextImage();
+            }
+            timeLeft--;
+        }
+
+        function startImageTimer() {
+            timeLeft = 10;
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(updateTimer, 1000);
+            lastTime = Date.now() / 1000;
+        }
+
+        function requestNextImage() {
+            fetch(`/next_image/${category}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.finished) {
+                        window.location.href = '/interface.html';
+                    } else {
+                        const img = document.getElementById('currentImage');
+                        img.onload = function() {
+                            img.dataset.actualWidth = data.dimensions.width;
+                            img.dataset.actualHeight = data.dimensions.height;
+                            startImageTimer();
+                        };
+                        img.src = data.image;
+                    }
+                });
+        }
+
+        document.getElementById('currentImage').addEventListener('mousemove', function(event) {
+            const rect = this.getBoundingClientRect();
+            const actualWidth = parseFloat(this.dataset.actualWidth) || this.naturalWidth;
+            const actualHeight = parseFloat(this.dataset.actualHeight) || this.naturalHeight;
+            
+            const scaleX = actualWidth / rect.width;
+            const scaleY = actualHeight / rect.height;
+            
+            const x = (event.clientX - rect.left) * scaleX;
+            const y = (event.clientY - rect.top) * scaleY;
+            
+            const currentTime = Date.now() / 1000;
+            const timeDiff = currentTime - lastTime;
+            lastTime = currentTime;
+            
+            fetch(`/track/${category}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    x: x,
+                    y: y,
+                    timestamp: currentTime,
+                    duration: timeDiff
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('statusText').textContent = 
+                    `Current element: ${data.element}\n` +
+                    `Position: (${Math.round(x)}, ${Math.round(y)})\n` +
+                    `Time on element: ${data.time.toFixed(2)}s\n` +
+                    `View order: ${data.order}`;
+            });
+        });
+
+        // Start tracking when page loads
+        window.onload = requestNextImage;
+    </script>
+</body>
+</html> 
